@@ -71,7 +71,7 @@
         const SHAKE_DURATION = 1500; // 1.5 seconds
 
         let initialCoinCount = 120;
-        const BIG_COIN_FINAL_RADIUS = 230;
+        const BIG_COIN_FINAL_RADIUS = 80;
         const BIG_COIN_INITIAL_RADIUS = 10;
         
         // --- Image Preloader ---
@@ -90,7 +90,7 @@
             // Higher quality images
             smallCoinImage.src = 'ttcoin.png';
             bigCoinImage.src = 'ttcoin.png';
-            particleImage.src = 'ttcoin.png';
+            particleImage.src = 'ttcoin.png'; // Higher quality particle
         }
 
 
@@ -223,9 +223,9 @@
         function createExplosionParticles(count) {
             if (!bigCoin) return;
             for (let i = 0; i < count; i++) {
-                const radius = Math.random() * 4 + 2; // Particles are a bit bigger now
+                const radius = Math.random() * 8 + 4; // Particles are bigger
                 const angle = Math.random() * Math.PI * 2;
-                const speed = Math.random() * 6 + 3;
+                const speed = Math.random() * 7 + 4; // More varied speed
                 const dx = Math.cos(angle) * speed;
                 const dy = Math.sin(angle) * speed;
                 particles.push(new Particle(bigCoin.x, bigCoin.y, radius, dx, dy));
@@ -290,12 +290,17 @@
                         bigCoin.targetRadius = BIG_COIN_FINAL_RADIUS;
                     }
                     bigCoin.update();
-                    bigCoin.draw();
                     createExplosionParticles(5);
                 }
                 
+                // Update and draw particles first
                 particles = particles.filter(p => p.life > 0);
                 particles.forEach(p => { p.update(); p.draw(); });
+
+                // Draw big coin last so it overlaps particles
+                if (bigCoin) {
+                    bigCoin.draw();
+                }
             }
 
             window.requestAnimationFrame(animate);
