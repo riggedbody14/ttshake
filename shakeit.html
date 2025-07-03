@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Floating Coins</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            overflow: hidden;
+            background-color: #111827; /* bg-gray-900 */
+        }
+        canvas {
+            display: block;
+            background-color: #111827; /* bg-gray-900 */
+        }
+        #popup {
+            transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
+        }
+    </style>
+</head>
+<body class="bg-gray-900">
+    <canvas id="coinCanvas"></canvas>
+
+    <!-- Success Popup -->
+    <div id="popup" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center opacity-0 pointer-events-none transform scale-95">
+        <div class="bg-white rounded-lg shadow-xl p-8 max-w-sm w-full text-center">
+            <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100">
+                <svg class="h-6 w-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+            </div>
+            <h3 class="text-lg leading-6 font-medium text-gray-900 mt-4">Transaction Successful!</h3>
+            <div class="mt-2 px-7 py-3">
+                <p class="text-sm text-gray-500">Your payment has been processed and the transaction is complete.</p>
+            </div>
+            <div class="mt-4">
+                <button id="closePopup" class="px-4 py-2 bg-green-500 text-white text-base font-medium rounded-md w-full shadow-sm hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-300">
+                    Done
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('coinCanvas');
+        const ctx = canvas.getContext('2d');
+        const popup = document.getElementById('popup');
+        const closePopupButton = document.getElementById('closePopup');
+
+        let coins = [];
+        let particles = [];
+        let ambientParticles = [];
+        let bigCoin = null;
+        let animationState = 'floating'; // floating, assembling, exploding
+        
+        // --- Image Placeholders ---
+        const smallCoinImage = new Image();
+        const bigCoinImage = new Image();
+        const particleImage = new Image();
+        let imagesLoaded = 0;
+        const totalImages = 3;
+
+        // --- Gyroscope and Shake Detection Variables ---
+        let gravityX = 0;
+        let gravityY = 0;
+        const SHAKE_THRESHOLD = 25;
+        let lastMotionTime = 0;
+        let shakeStartTime = null;
+        const SHAKE_DURATION = 1500; // 1.5 seconds
+
+        let initialCoinCount = 120;
+        const BIG_COIN_FINAL_RADIUS = 80;
+        const BIG_COIN_INITIAL_RADIUS = 10;
+        
+        // --- Image Preloader ---
+        function onImageLoad() {
+            imagesLoaded++;
+            if (imagesLoaded === totalImages) {
+                setup(); // Start the app once all images are loaded
+            }
+        }
+
+        function preloadImages() {
+            smallCoinImage.onload = onImageLoad;
+            bigCoinImage.onload = onImageLoad;
+            particleImage.onload = onImageLoad;
+
+            smallCoinImage.src = 'ttcoin.png';
+            bigCoinImage.src = 'ttcoin.png';
+            particleImage.src = 'ttcoin.png';
+        }
+
+
+        // --- Setup ---
+        function setup() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            createCoins();
+            createAmbientParticles();
+            animationState = 'floating';
+            bigCoin = null;
+            particles = [];
+            window.requestAnimationFrame(animate);
+        }
+
+        // --- Coin and Particle Classes ---
+        class Coin {
+            constructor(x, y, radius, dx, dy, image) {
+                this.x = x;
+                this.y = y;
+                this.initialRadius = radius;
+                this.radius = radius;
+                this.targetRadius = radius; // For smooth growth
+                this.dx = dx;
+                this.dy = dy;
+                this.image = image;
+            }
+
+            draw() {
+                ctx.save();
+                // Draw the image centered on the coin's position
+                ctx.drawImage(this.image, this.x - this.radius, this.y - this.radius, this.radius * 2, this.radius * 2);
+                ctx.restore();
+            }
+
+            update() {
+                // Apply gyroscope gravity during floating state
+                if (animationState === 'floating') {
+                    this.dx += gravityX;
+                    this.dy += gravityY;
+                    this.dx *= 0.98;
+                    this.dy *= 0.98;
+                }
+
+                if (this.x + this.radius > canvas.width || this.x - this.radius < 0) {
+                    this.dx = -this.dx * 0.9;
+                     if(this.x + this.radius > canvas.width) this.x = canvas.width - this.radius;
+                     if(this.x - this.radius < 0) this.x = this.radius;
+                }
+                if (this.y + this.radius > canvas.height || this.y - this.radius < 0) {
+                    this.dy = -this.dy * 0.9;
+                     if(this.y + this.radius > canvas.height) this.y = canvas.height - this.radius;
+                     if(this.y - this.radius < 0) this.y = this.radius;
+                }
+                
+                this.x += this.dx;
+                this.y += this.dy;
+
+                if (Math.abs(this.targetRadius - this.radius) > 0.1) {
+                    this.radius += (this.targetRadius - this.radius) * 0.1;
+                }
+            }
+        }
+
+        class Particle {
+            constructor(x, y, radius, dx, dy) {
+                this.x = x; this.y = y; this.radius = radius; this.dx = dx; this.dy = dy;
+                this.life = 1 + Math.random() * 0.5;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.life;
+                ctx.drawImage(particleImage, this.x - this.radius, this.y - this.radius, this.radius * 2, this.radius * 2);
+                ctx.restore();
+            }
+
+            update() {
+                this.x += this.dx;
+                this.y += this.dy;
+                this.dx *= 0.98;
+                this.dy *= 0.98;
+                this.life -= 0.02;
+            }
+        }
+
+        class AmbientParticle {
+             constructor(x, y, radius, dx, dy) {
+                this.x = x; this.y = y; this.radius = radius; this.dx = dx; this.dy = dy;
+                this.opacity = Math.random() * 0.3;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.opacity;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+                ctx.fill();
+                ctx.closePath();
+                ctx.restore();
+            }
+
+            update() {
+                this.x += this.dx; this.y += this.dy;
+                if (this.x < 0) this.x = canvas.width;
+                if (this.x > canvas.width) this.x = 0;
+                if (this.y < 0) this.y = canvas.height;
+                if (this.y > canvas.height) this.y = 0;
+            }
+        }
+
+        // --- Creation Functions ---
+        function createCoins() {
+            coins = [];
+            const radius = 15;
+            for (let i = 0; i < initialCoinCount; i++) {
+                const x = Math.random() * (canvas.width - radius * 2) + radius;
+                const y = Math.random() * (canvas.height - radius * 2) + radius;
+                coins.push(new Coin(x, y, radius, 0, 0, smallCoinImage));
+            }
+        }
+
+        function createAmbientParticles() {
+            ambientParticles = [];
+            const particleCount = 70;
+            for (let i = 0; i < particleCount; i++) {
+                const x = Math.random() * canvas.width;
+                const y = Math.random() * canvas.height;
+                const radius = Math.random() * 1.5 + 0.5;
+                const dx = (Math.random() - 0.5) * 0.3;
+                const dy = (Math.random() - 0.5) * 0.3;
+                ambientParticles.push(new AmbientParticle(x, y, radius, dx, dy));
+            }
+        }
+
+        function createExplosionParticles(count) {
+            if (!bigCoin) return;
+            for (let i = 0; i < count; i++) {
+                const radius = Math.random() * 4 + 2; // Particles are a bit bigger now
+                const angle = Math.random() * Math.PI * 2;
+                const speed = Math.random() * 6 + 3;
+                const dx = Math.cos(angle) * speed;
+                const dy = Math.sin(angle) * speed;
+                particles.push(new Particle(bigCoin.x, bigCoin.y, radius, dx, dy));
+            }
+        }
+        
+        // --- Animation Logic ---
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            ambientParticles.forEach(p => { p.update(); p.draw(); });
+
+            if (shakeStartTime && Date.now() - lastMotionTime > 300) {
+                shakeStartTime = null;
+            }
+
+            if (shakeStartTime && Date.now() - shakeStartTime > SHAKE_DURATION) {
+                triggerAssembly();
+                shakeStartTime = null;
+            }
+
+            if (animationState === 'floating') {
+                coins.forEach(coin => { coin.update(); coin.draw(); });
+            } else if (animationState === 'assembling') {
+                if (bigCoin) {
+                    bigCoin.update();
+                }
+                
+                const growthPerCoin = (BIG_COIN_FINAL_RADIUS - BIG_COIN_INITIAL_RADIUS) / initialCoinCount;
+
+                for (let i = coins.length - 1; i >= 0; i--) {
+                    const coin = coins[i];
+                    const dx = bigCoin.x - coin.x;
+                    const dy = bigCoin.y - coin.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < bigCoin.radius) { 
+                        coins.splice(i, 1);
+                        bigCoin.targetRadius += growthPerCoin;
+                    } else {
+                        const maxDistance = canvas.width / 2;
+                        const distanceRatio = Math.min(1, dist / maxDistance);
+                        const pullFactor = 1 - distanceRatio;
+                        const radialForce = 0.01 + (0.22 * pullFactor * pullFactor);
+                        coin.x += dx * radialForce;
+                        coin.y += dy * radialForce;
+                        coin.draw();
+                    }
+                }
+                
+                if (bigCoin) {
+                    bigCoin.draw();
+                }
+
+                if (coins.length === 0) {
+                    animationState = 'exploding';
+                    bigCoin.targetRadius = BIG_COIN_FINAL_RADIUS + 10;
+                }
+            } else if (animationState === 'exploding') {
+                if(bigCoin) {
+                    if (bigCoin.targetRadius > BIG_COIN_FINAL_RADIUS) {
+                        bigCoin.targetRadius = BIG_COIN_FINAL_RADIUS;
+                    }
+                    bigCoin.update();
+                    bigCoin.draw();
+                    createExplosionParticles(5);
+                }
+                
+                particles = particles.filter(p => p.life > 0);
+                particles.forEach(p => { p.update(); p.draw(); });
+            }
+
+            window.requestAnimationFrame(animate);
+        }
+
+        // --- Event Handlers ---
+        function handleOrientation(event) {
+            const gamma = event.gamma;
+            const beta = event.beta;
+            gravityX = (gamma / 90) * 0.5;
+            gravityY = (beta / 90) * 0.5;
+        }
+
+        function handleMotion(event) {
+            const acceleration = event.accelerationIncludingGravity;
+            const totalAcceleration = Math.sqrt((acceleration.x||0)**2 + (acceleration.y||0)**2 + (acceleration.z||0)**2);
+
+            if (totalAcceleration > SHAKE_THRESHOLD) {
+                lastMotionTime = Date.now();
+                if (shakeStartTime === null && animationState === 'floating') {
+                    shakeStartTime = Date.now();
+                }
+            }
+        }
+        
+        function triggerAssembly() {
+            if (animationState === 'floating') {
+                animationState = 'assembling';
+                const centerX = canvas.width / 2;
+                const centerY = canvas.height / 2;
+                bigCoin = new Coin(centerX, centerY, BIG_COIN_INITIAL_RADIUS, 0, 0, bigCoinImage);
+                bigCoin.targetRadius = BIG_COIN_INITIAL_RADIUS;
+            }
+        }
+
+        function handleCanvasClick(event) {
+            if (animationState !== 'exploding') return;
+            if (!bigCoin) return;
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = event.clientX - rect.left;
+            const mouseY = event.clientY - rect.top;
+            const dx = mouseX - bigCoin.x;
+            const dy = mouseY - bigCoin.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            if (distance < bigCoin.radius) {
+                showPopup();
+            }
+        }
+
+        function showPopup() {
+            popup.classList.remove('opacity-0', 'pointer-events-none', 'scale-95');
+            popup.classList.add('opacity-100', 'scale-100');
+        }
+
+        function hidePopup() {
+            popup.classList.add('opacity-0', 'scale-95');
+            popup.classList.remove('opacity-100', 'scale-100');
+            setTimeout(() => {
+                popup.classList.add('pointer-events-none');
+                setup();
+            }, 300);
+        }
+
+        // --- Event Listeners ---
+        window.addEventListener('deviceorientation', handleOrientation);
+        window.addEventListener('devicemotion', handleMotion);
+        window.addEventListener('resize', setup);
+        canvas.addEventListener('click', handleCanvasClick);
+        closePopupButton.addEventListener('click', hidePopup);
+
+        // Debugging with Spacebar
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                if (animationState === 'floating') {
+                    console.log('Debug: Forcing assembly.');
+                     triggerAssembly();
+                }
+            }
+        });
+
+        // --- Initial Call ---
+        preloadImages();
+    </script>
+</body>
+</html>
