@@ -64,16 +64,14 @@
         let imagesLoaded = 0;
         const totalImages = 3;
 
-        // --- Gyroscope and Shake Detection Variables ---
-        let gravityX = 0;
-        let gravityY = 0;
+        // --- Shake Detection Variables ---
         const SHAKE_THRESHOLD = 25;
         let lastMotionTime = 0;
         let shakeStartTime = null;
         const SHAKE_DURATION = 1500; // 1.5 seconds
 
         let initialCoinCount = 120;
-        const BIG_COIN_FINAL_RADIUS = 80;
+        const BIG_COIN_FINAL_RADIUS = 230;
         const BIG_COIN_INITIAL_RADIUS = 10;
         
         // --- Image Preloader ---
@@ -89,6 +87,7 @@
             bigCoinImage.onload = onImageLoad;
             particleImage.onload = onImageLoad;
 
+            // Higher quality images
             smallCoinImage.src = 'ttcoin.png';
             bigCoinImage.src = 'ttcoin.png';
             particleImage.src = 'ttcoin.png';
@@ -128,28 +127,18 @@
             }
 
             update() {
-                // Apply gyroscope gravity during floating state
-                if (animationState === 'floating') {
-                    this.dx += gravityX;
-                    this.dy += gravityY;
-                    this.dx *= 0.98;
-                    this.dy *= 0.98;
-                }
-
+                // Bounce off walls
                 if (this.x + this.radius > canvas.width || this.x - this.radius < 0) {
-                    this.dx = -this.dx * 0.9;
-                     if(this.x + this.radius > canvas.width) this.x = canvas.width - this.radius;
-                     if(this.x - this.radius < 0) this.x = this.radius;
+                    this.dx = -this.dx;
                 }
                 if (this.y + this.radius > canvas.height || this.y - this.radius < 0) {
-                    this.dy = -this.dy * 0.9;
-                     if(this.y + this.radius > canvas.height) this.y = canvas.height - this.radius;
-                     if(this.y - this.radius < 0) this.y = this.radius;
+                    this.dy = -this.dy;
                 }
                 
                 this.x += this.dx;
                 this.y += this.dy;
 
+                // Smooth radius change for the big coin
                 if (Math.abs(this.targetRadius - this.radius) > 0.1) {
                     this.radius += (this.targetRadius - this.radius) * 0.1;
                 }
@@ -211,7 +200,10 @@
             for (let i = 0; i < initialCoinCount; i++) {
                 const x = Math.random() * (canvas.width - radius * 2) + radius;
                 const y = Math.random() * (canvas.height - radius * 2) + radius;
-                coins.push(new Coin(x, y, radius, 0, 0, smallCoinImage));
+                // Give coins a slow, random initial velocity for water-like floating
+                const dx = (Math.random() - 0.5) * 0.5;
+                const dy = (Math.random() - 0.5) * 0.5;
+                coins.push(new Coin(x, y, radius, dx, dy, smallCoinImage));
             }
         }
 
@@ -310,13 +302,6 @@
         }
 
         // --- Event Handlers ---
-        function handleOrientation(event) {
-            const gamma = event.gamma;
-            const beta = event.beta;
-            gravityX = (gamma / 90) * 0.5;
-            gravityY = (beta / 90) * 0.5;
-        }
-
         function handleMotion(event) {
             const acceleration = event.accelerationIncludingGravity;
             const totalAcceleration = Math.sqrt((acceleration.x||0)**2 + (acceleration.y||0)**2 + (acceleration.z||0)**2);
@@ -368,7 +353,6 @@
         }
 
         // --- Event Listeners ---
-        window.addEventListener('deviceorientation', handleOrientation);
         window.addEventListener('devicemotion', handleMotion);
         window.addEventListener('resize', setup);
         canvas.addEventListener('click', handleCanvasClick);
